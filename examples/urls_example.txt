@@ -1,0 +1,10 @@
+# Example URLs file for batch ingestion
+# One URL per line
+# Lines starting with # are ignored
+
+# Public video URLs
+https://example.com/video1.mp4
+https://example.com/video2.mp4
+
+# S3 pre-signed URLs (replace with actual URLs)
+# https://s3.amazonaws.com/bucket/video3.mp4?AWSAccessKeyId=...&Signature=...&Expires=...

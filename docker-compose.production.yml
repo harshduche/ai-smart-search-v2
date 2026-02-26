@@ -1,0 +1,117 @@
+# Production Deployment — RTX 5090 (32 GB VRAM) / 16 GB RAM / 300 GB disk
+#
+# Architecture:
+#   model-server  (GPU)  -- single instance, owns embedding + reranker models
+#   worker        (CPU)  -- 1-2 instances, consume RMQ jobs, call model-server
+#   api           (CPU)  -- 1 instance, serve search HTTP, call model-server
+#
+# Infrastructure (external / cloud):
+#   Qdrant Cloud  -- vector DB     (QDRANT_URL + QDRANT_API_KEY in .env)
+#   CloudAMQP     -- job queue     (RABBITMQ_* in .env)
+#   MongoDB       -- geospatial DB (MONGODB_URI + MONGODB_DATABASE in .env)
+#
+# Usage:
+#   docker compose -f docker-compose.production.yml up -d
+#   docker compose -f docker-compose.production.yml up -d --scale worker=2
+
+services:
+  # ---------------------------------------------------------------
+  # Model Server (GPU) -- embedding + reranker on RTX 5090
+  # VRAM budget: ~6 GB embedding + ~6 GB reranker + ~8 GB batch headroom = ~20 GB
+  # ---------------------------------------------------------------
+  model-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: video-rag-model-server
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./models:/app/models
+    env_file: .env
+    environment:
+      DEVICE: cuda
+      BATCH_SIZE: "16"
+      MODEL_SERVER_PORT: "8001"
+      BATCH_WINDOW_MS: "50"
+      MAX_BATCH_SIZE: "32"
+    restart: unless-stopped
+    networks:
+      - video-rag-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    command: ["python3", "model_server_batched.py"]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import requests; r=requests.get('http://localhost:8001/health'); r.raise_for_status()"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  # ---------------------------------------------------------------
+  # Worker (CPU) -- consume embedding.jobs, call model-server
+  # RAM budget: ~1.5 GB per worker; keep at 1-2 with 16 GB system RAM
+  # ---------------------------------------------------------------
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.cpu
+    volumes:
+      - ./logs:/app/logs
+    env_file: .env
+    environment:
+      USE_REMOTE_EMBEDDINGS: "true"
+      MODEL_SERVER_URL: http://model-server:8001
+      MODEL_SERVER_TIMEOUT: "300"
+      DEVICE: cpu
+      SAVE_FULL_FRAMES: "false"
+      SAVE_THUMBNAILS: "false"
+    mem_limit: 2g
+    depends_on:
+      model-server:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - video-rag-network
+    command: ["python3", "worker.py"]
+
+  # ---------------------------------------------------------------
+  # API Server (CPU) -- serves search requests, calls model-server
+  # ---------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.cpu
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      USE_REMOTE_EMBEDDINGS: "true"
+      MODEL_SERVER_URL: http://model-server:8001
+      MODEL_SERVER_TIMEOUT: "60"
+      DEVICE: cpu
+      PRELOAD_MODELS: "false"
+      API_HOST: 0.0.0.0
+      API_PORT: "8000"
+    mem_limit: 2g
+    depends_on:
+      model-server:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - video-rag-network
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import requests; r=requests.get('http://localhost:8000/health'); r.raise_for_status()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+networks:
+  video-rag-network:
+    driver: bridge

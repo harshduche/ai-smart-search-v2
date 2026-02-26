@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(source venv/bin/activate)",
+      "Bash(python:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(python3:*)",
+      "Bash(cat:*)",
+      "Bash(docker compose:*)",
+      "Bash(test:*)",
+      "Bash(lsof:*)",
+      "Bash(ss:*)",
+      "Bash(curl:*)",
+      "Bash(nvidia-smi:*)",
+      "Bash(ls:*)",
+      "Bash(docker exec:*)",
+      "Bash(chmod:*)"
+    ]
+  }
+}

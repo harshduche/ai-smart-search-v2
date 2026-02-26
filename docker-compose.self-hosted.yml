@@ -1,0 +1,223 @@
+
+services:
+  # RabbitMQ Message Queue
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: video-rag-rabbitmq
+    ports:
+      - "5672:5672"   # AMQP port
+      - "15672:15672" # Management UI
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+      - RABBITMQ_DEFAULT_VHOST=/
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    restart: unless-stopped
+    networks:
+      - video-rag-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Qdrant Vector Database
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: video-rag-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - ./qdrant_storage:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    restart: unless-stopped
+    networks:
+      - video-rag-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:6333/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # FastAPI Application (GPU version)
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: video-rag-api
+    ports:
+      - "8000:8000"
+    volumes:
+      # Application code (for development with live reload)
+      - ./api:/app/api
+      - ./ingestion:/app/ingestion
+      - ./search:/app/search
+      - ./scripts:/app/scripts
+      - ./frontend:/app/frontend
+      - ./config.py:/app/config.py
+      - ./run.py:/app/run.py
+
+      # Data directories
+      - ./data:/app/data
+      - ./models:/app/models
+
+      # Environment file
+      - ./.env:/app/.env
+    environment:
+      # Override Qdrant host to use Docker service name
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+
+      # RabbitMQ connection (for worker)
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+
+      # MongoDB (for geospatial queries)
+      - MONGODB_URI=mongodb://mongodb:27017
+      - MONGODB_DATABASE=video_rag
+
+      # These will be overridden by .env file if present
+      - DEVICE=cuda
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - PRELOAD_MODELS=true
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - video-rag-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            # Enable GPU support (comment out for CPU-only)
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s  # Give time for models to load
+
+  # Embedding Worker (GPU version)
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: video-rag-worker
+    volumes:
+      # Application code (for development with live reload)
+      - ./ingestion:/app/ingestion
+      - ./search:/app/search
+      - ./observability:/app/observability
+      - ./config.py:/app/config.py
+      - ./worker.py:/app/worker.py
+
+      # Data directories
+      - ./data:/app/data
+      - ./models:/app/models
+
+      # Logs directory
+      - ./logs:/app/logs
+
+      # Environment file
+      - ./.env:/app/.env
+    environment:
+      # Override service hosts to use Docker service names
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASSWORD=guest
+      - RABBITMQ_QUEUE=embedding.jobs
+      - RABBITMQ_PREFETCH_COUNT=1
+
+      # MongoDB (for geospatial queries)
+      - MONGODB_URI=mongodb://mongodb:27017
+      - MONGODB_DATABASE=video_rag
+
+      # Model configuration
+      - DEVICE=cuda
+      - BATCH_SIZE=4
+      - PRELOAD_MODELS=true
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - video-rag-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            # Enable GPU support (comment out for CPU-only)
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    command: ["python", "worker.py"]
+
+  # FastAPI Application (CPU version - alternative)
+  # Uncomment this and comment out the 'api' service above if you don't have GPU
+  # api-cpu:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.cpu
+  #   container_name: video-rag-api
+  #   ports:
+  #     - "8000:8000"
+  #   volumes:
+  #     - ./api:/app/api
+  #     - ./ingestion:/app/ingestion
+  #     - ./search:/app/search
+  #     - ./scripts:/app/scripts
+  #     - ./frontend:/app/frontend
+  #     - ./config.py:/app/config.py
+  #     - ./run.py:/app/run.py
+  #     - ./data:/app/data
+  #     - ./models:/app/models
+  #     - ./.env:/app/.env
+  #   environment:
+  #     - QDRANT_HOST=qdrant
+  #     - QDRANT_PORT=6333
+  #     - DEVICE=cpu
+  #     - API_HOST=0.0.0.0
+  #     - API_PORT=8000
+  #     - PRELOAD_MODELS=false
+  #   depends_on:
+  #     qdrant:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+  #   networks:
+  #     - video-rag-network
+
+  # MongoDB (for geospatial queries)
+  mongodb:
+    image: mongo:7.0
+    container_name: video-rag-mongodb
+    volumes:
+      - mongodb_data:/data/db
+    restart: unless-stopped
+    networks:
+      - video-rag-network
+
+networks:
+  video-rag-network:
+    driver: bridge
+
+volumes:
+  qdrant_storage:
+  rabbitmq_data:
+  mongodb_data:

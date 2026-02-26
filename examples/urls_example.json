@@ -1,0 +1,20 @@
+[
+  {
+    "url": "https://example.com/security/camera1_20240207.mp4",
+    "zone": "main_entrance",
+    "clip_duration": 4.0,
+    "max_frames_per_clip": 32,
+    "batch_size": 50
+  },
+  {
+    "url": "https://example.com/security/camera2_20240207.mp4",
+    "zone": "parking_lot",
+    "clip_duration": 5.0,
+    "max_frames_per_clip": 48
+  },
+  {
+    "url": "https://s3.amazonaws.com/your-bucket/videos/camera3.mp4?signature=...",
+    "zone": "perimeter_fence",
+    "clip_duration": 4.0
+  }
+]

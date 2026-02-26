@@ -1,0 +1,107 @@
+[
+  {
+    "scenario_id": 1,
+    "query": "people near the perimeter fence",
+    "num_results": 5,
+    "search_time_ms": 5963.62,
+    "success": true
+  },
+  {
+    "scenario_id": 2,
+    "query": "vehicles in parking zones or unauthorized areas",
+    "num_results": 5,
+    "search_time_ms": 29.29,
+    "success": true
+  },
+  {
+    "scenario_id": 3,
+    "query": "ladders or climbing equipment",
+    "num_results": 5,
+    "search_time_ms": 24.03,
+    "success": true
+  },
+  {
+    "scenario_id": 4,
+    "query": "unattended bags or suspicious packages",
+    "num_results": 5,
+    "search_time_ms": 24.51,
+    "success": true
+  },
+  {
+    "scenario_id": 5,
+    "query": "person wearing safety vest or high visibility clothing",
+    "num_results": 5,
+    "search_time_ms": 23.92,
+    "success": true
+  },
+  {
+    "scenario_id": 6,
+    "query": "nighttime footage from the main gate area",
+    "num_results": 0,
+    "search_time_ms": 30.45,
+    "success": false
+  },
+  {
+    "scenario_id": 7,
+    "query": "empty security post or guard station without personnel",
+    "num_results": 5,
+    "search_time_ms": 28.85,
+    "success": true
+  },
+  {
+    "scenario_id": 8,
+    "query": "open gate or unlocked entrance",
+    "num_results": 5,
+    "search_time_ms": 21.51,
+    "success": true
+  },
+  {
+    "scenario_id": 9,
+    "query": "crowd or gathering of multiple people",
+    "num_results": 5,
+    "search_time_ms": 21.69,
+    "success": true
+  },
+  {
+    "scenario_id": 10,
+    "query": "rain or adverse weather conditions outdoor",
+    "num_results": 5,
+    "search_time_ms": 21.92,
+    "success": true
+  },
+  {
+    "scenario_id": 11,
+    "query": "security breach or intrusion at fence",
+    "num_results": 5,
+    "search_time_ms": 21.65,
+    "success": true
+  },
+  {
+    "scenario_id": 12,
+    "query": "damage to fence or broken infrastructure",
+    "num_results": 5,
+    "search_time_ms": 21.18,
+    "success": true
+  },
+  {
+    "scenario_id": 13,
+    "query": "white sedan or light colored car",
+    "num_results": 5,
+    "search_time_ms": 21.67,
+    "success": true
+  },
+  {
+    "scenario_id": 14,
+    "query": "emergency vehicle or ambulance or fire truck",
+    "num_results": 5,
+    "search_time_ms": 26.82,
+    "success": true
+  },
+  {
+    "scenario_id": 15,
+    "query": "unusual activity or anomalous behavior",
+    "num_results": 5,
+    "search_time_ms": 21.83,
+    "success": true
+  }
+]

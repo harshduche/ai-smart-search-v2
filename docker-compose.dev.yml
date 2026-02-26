@@ -1,0 +1,120 @@
+
+# Development configuration with hot reload and debugging
+services:
+  # RabbitMQ Message Queue
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: video-rag-rabbitmq-dev
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    networks:
+      - video-rag-network
+
+  # Qdrant Vector Database
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: video-rag-qdrant-dev
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - ./qdrant_storage:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    networks:
+      - video-rag-network
+
+  # FastAPI Application
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: video-rag-api-dev
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount source code for hot reload
+      - ./api:/app/api
+      - ./ingestion:/app/ingestion
+      - ./search:/app/search
+      - ./observability:/app/observability
+      - ./scripts:/app/scripts
+      - ./frontend:/app/frontend
+      - ./config.py:/app/config.py
+      - ./run.py:/app/run.py
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./.env:/app/.env
+    environment:
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - DEVICE=cuda
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - PRELOAD_MODELS=false  # Faster startup for development
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      - qdrant
+      - rabbitmq
+    networks:
+      - video-rag-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # Embedding Worker (with hot reload for development)
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: video-rag-worker-dev
+    volumes:
+      # Mount source code for hot reload
+      - ./ingestion:/app/ingestion
+      - ./search:/app/search
+      - ./observability:/app/observability
+      - ./config.py:/app/config.py
+      - ./worker.py:/app/worker.py
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - ./.env:/app/.env
+    environment:
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASSWORD=guest
+      - RABBITMQ_QUEUE=embedding.jobs
+      - RABBITMQ_PREFETCH_COUNT=1
+      - DEVICE=cuda
+      - BATCH_SIZE=4
+      - PRELOAD_MODELS=false  # Faster startup for development
+    command: ["python3", "worker.py"]
+    depends_on:
+      - qdrant
+      - rabbitmq
+    networks:
+      - video-rag-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+networks:
+  video-rag-network:
+    driver: bridge

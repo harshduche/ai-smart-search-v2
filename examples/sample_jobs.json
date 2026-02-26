@@ -1,0 +1,29 @@
+[
+  {
+    "jobId": "example-job-id-12345678-1234-5678-1234-567812345678",
+    "organizationId": "658295f8dbab9efb302183ab",
+    "siteId": "chande-site",
+    "requestId": "example-request-id-abcdef12-3456-7890-abcd-ef1234567890",
+    "media": {
+      "mediaId": "example-media-id-abcdef12-3456-7890-abcd-ef1234567890",
+      "flightId": "dc630f35-4f13-486f-8af1-e73e38f4a965",
+      "flightType": "example-flight-type",
+      "missionId": "example-mission-id-abcdef12-3456-7890-abcd-ef1234567890",
+      "missionType": null,
+      "fileName": "DJI_20251103120704_0003_V.mp4",
+      "fileType": "mp4",
+      "fileSizeBytes": 123456789,
+      "captureTimestamp": "2025-11-03T12:07:04Z",
+      "latitude": 37.7749,
+      "longitude": -122.4194,
+      "storagePath": "s3://flytbase-media-prod/68ad71da47c814d782be1804/media/acdd9928-fe1c-4d7e-b92d-4fc030f34ca0/DJI_202511031201_001_acdd9928-fe1c-4d7e-b92d-4fc030f34ca0/DJI_20251103120704_0003_V.mp4"
+    },
+    "pipelineVersion": "v1.0.0",
+    "chunking": {
+      "chunkDurationSec": 4.0,
+      "maxFramesPerChunk": 16
+    },
+    "priority": 8,
+    "createdAt": "2024-06-01T12:34:56.000000+00:00"
+  }
+]

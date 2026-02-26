@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visual Search Engine - Security Operations</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-main">
+                <div>
+                    <h1>Visual Search Engine</h1>
+                    <p class="subtitle">AI-Powered Security Footage Search</p>
+                </div>
+                <div class="header-actions">
+                    <button id="open-ingest-modal" class="secondary-btn">
+                        Ingest Video
+                    </button>
+                    <button id="open-rtsp-modal" class="secondary-btn">
+                        📡 RTSP Stream
+                    </button>
+                </div>
+            </div>
+            <div id="global-upload-progress" class="global-progress" hidden>
+                <div class="global-progress-bar"></div>
+                <div class="global-progress-info">
+                    <span id="global-progress-text">Uploading...</span>
+                    <span id="global-progress-eta"></span>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <!-- Search Section -->
+            <section class="search-section">
+                <div class="search-tabs">
+                    <button class="tab-btn active" data-tab="text">Text Search</button>
+                    <button class="tab-btn" data-tab="image">Image Search</button>
+                    <button class="tab-btn" data-tab="multimodal">Multimodal</button>
+                    <button class="tab-btn" data-tab="ocr">OCR Search</button>
+                </div>
+
+                <!-- Text Search Tab -->
+                <div class="tab-content active" id="text-tab">
+                    <form id="text-search-form" class="search-form">
+                        <div class="input-group">
+                            <input type="text" id="text-query"
+                                   placeholder="e.g., person walking near the perimeter fence at night"
+                                   required>
+                            <button type="submit" class="search-btn">Search</button>
+                        </div>
+                        <div class="example-queries">
+                            <span>Try:</span>
+                            <button type="button" class="example-btn" data-query="white sedan on zebra crossing">White sedan on zebra crossing</button>
+                            <button type="button" class="example-btn" data-query="truck moving through farms">Truck moving through farms</button>
+                            <button type="button" class="example-btn" data-query="nighttime footage from main gate">Night footage</button>
+                            <button type="button" class="example-btn" data-query="person wearing safety vest">Dog running on road</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Image Search Tab -->
+                <div class="tab-content" id="image-tab">
+                    <form id="image-search-form" class="search-form">
+                        <div class="upload-area" id="image-upload-area">
+                            <input type="file" id="image-file" accept="image/*" hidden>
+                            <div class="upload-placeholder">
+                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                                    <polyline points="21 15 16 10 5 21"/>
+                                </svg>
+                                <p>Click or drag an image to search for similar scenes</p>
+                            </div>
+                            <img id="image-preview" src="" alt="Preview" hidden>
+                        </div>
+                        <button type="submit" class="search-btn" disabled id="image-search-btn">Search Similar</button>
+                    </form>
+                </div>
+
+                <!-- Multimodal Search Tab -->
+                <div class="tab-content" id="multimodal-tab">
+                    <form id="multimodal-search-form" class="search-form">
+                        <div class="upload-area" id="multimodal-upload-area">
+                            <input type="file" id="multimodal-file" accept="image/*" hidden>
+                            <div class="upload-placeholder">
+                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                                    <polyline points="21 15 16 10 5 21"/>
+                                </svg>
+                                <p>Upload reference image</p>
+                            </div>
+                            <img id="multimodal-preview" src="" alt="Preview" hidden>
+                        </div>
+                        <div class="input-group">
+                            <input type="text" id="multimodal-query"
+                                   placeholder="e.g., similar scene but during evening hours"
+                                   required>
+                            <button type="submit" class="search-btn" disabled id="multimodal-search-btn">Search</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- OCR Search Tab -->
+                <div class="tab-content" id="ocr-tab">
+                    <form id="ocr-search-form" class="search-form">
+                        <div class="input-group">
+                            <input type="text" id="ocr-query"
+                                   placeholder="e.g., license plate 7829, DANGER sign"
+                                   required>
+                            <button type="submit" class="search-btn">Search Text</button>
+                        </div>
+                        <div class="example-queries">
+                            <span>Try:</span>
+                            <button type="button" class="example-btn ocr" data-query="7829">License: 7829</button>
+                            <button type="button" class="example-btn ocr" data-query="DANGER">DANGER sign</button>
+                            <button type="button" class="example-btn ocr" data-query="RESTRICTED">RESTRICTED</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Filters -->
+                <div class="filters-section">
+                    <h3>Filters</h3>
+                    <div class="filters-grid">
+                        <div class="filter-group">
+                            <label for="filter-org">Organization ID</label>
+                            <input type="text" id="filter-org" placeholder="e.g., my_org" required>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-zone">Zone</label>
+                            <select id="filter-zone">
+                                <option value="">All Zones</option>
+                                <option value="main_gate">Main Gate</option>
+                                <option value="perimeter">Perimeter</option>
+                                <option value="parking">Parking</option>
+                                <option value="warehouse">Warehouse</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-time">Time of Day</label>
+                            <select id="filter-time">
+                                <option value="">Any Time</option>
+                                <option value="day">Daytime</option>
+                                <option value="night">Nighttime</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="filter-results">Results</label>
+                            <select id="filter-results">
+                                <option value="10">10</option>
+                                <option value="20" selected>20</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="use-reranker" />
+                                <span class="toggle-slider"></span>
+                                <span class="toggle-text">Use Reranker</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Results Section -->
+            <section class="results-section">
+                <div class="results-header">
+                    <h2>Search Results</h2>
+                    <div class="results-info">
+                        <span id="results-count">0 results</span>
+                        <span id="search-time"></span>
+                    </div>
+                </div>
+
+                <div id="results-grid" class="results-grid">
+                    <div class="no-results">
+                        <p>Enter a search query to find relevant footage</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Video Modal -->
+        <div id="video-modal" class="modal">
+            <div class="modal-content">
+                <button class="modal-close">&times;</button>
+                <div class="modal-body">
+                    <img id="modal-image" src="" alt="Frame">
+                    <div class="modal-info">
+                        <h3 id="modal-title">Frame Details</h3>
+                        <div class="modal-details">
+                            <p><strong>Source:</strong> <span id="modal-source"></span></p>
+                            <p><strong id="modal-frame-label">Frame:</strong> <span id="modal-frame"></span></p>
+                            <p id="modal-clip-range-row" style="display:none;">
+                                <strong>Clip:</strong> <span id="modal-clip-range"></span>
+                            </p>
+                            <p><strong>Timestamp:</strong> <span id="modal-timestamp"></span></p>
+                            <p id="modal-clip-meta-row" style="display:none;">
+                                <strong>Clip info:</strong> <span id="modal-clip-meta"></span>
+                            </p>
+                            <p><strong>Zone:</strong> <span id="modal-zone"></span></p>
+                            <p><strong>Score:</strong> <span id="modal-score"></span></p>
+                        </div>
+                        <div class="modal-actions">
+                            <button id="modal-open-video-btn" class="search-btn">
+                                Open video at this time
+                            </button>
+                            <p id="modal-video-hint" class="modal-hint"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ingest Video Modal -->
+        <div id="ingest-modal" class="modal">
+            <div class="modal-content">
+                <button class="modal-close ingest-close">&times;</button>
+                <div class="modal-body">
+                    <h2>Upload &amp; Ingest Video</h2>
+                    <form id="ingest-video-form" class="search-form">
+                        <div class="upload-area" id="ingest-upload-area">
+                            <input type="file" id="ingest-video-file" accept="video/*" hidden>
+                            <div class="upload-placeholder">
+                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                                    <polygon points="10 8 16 12 10 16 10 8"/>
+                                </svg>
+                                <p>Click or drag a video file to ingest into the system</p>
+                                <p class="upload-hint">Supports MP4, AVI, MOV, MKV</p>
+                            </div>
+                            <div id="ingest-video-info" class="ingest-video-info" hidden>
+                                <p><strong>Selected:</strong> <span id="ingest-video-name"></span></p>
+                                <p class="ingest-video-warning">
+                                    Large videos may take a while to upload and process.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="ingest-options">
+                            <div class="ingest-row">
+                                <div class="filter-group">
+                                    <label for="ingest-zone">Zone</label>
+                                    <input type="text" id="ingest-zone" placeholder="e.g., main_gate, parking">
+                                </div>
+                                <div class="filter-group">
+                                    <label for="ingest-mode">Ingestion Mode</label>
+                                    <select id="ingest-mode">
+                                        <option value="frames">Per-frame (existing pipeline)</option>
+                                        <option value="semantic">Semantic clips (2–5s, Qwen3 video)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="ingest-row" id="semantic-options-row" style="display:none;">
+                                <div class="filter-group">
+                                    <label for="clip-duration">Clip Duration (seconds)</label>
+                                    <input type="number" id="clip-duration" min="1" max="20" step="0.5" value="4.0">
+                                </div>
+                                <div class="filter-group">
+                                    <label for="max-frames-per-clip">Max Frames per Clip</label>
+                                    <input type="number" id="max-frames-per-clip" min="4" max="128" step="1" value="32">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="ingest-actions">
+                            <button type="submit" class="search-btn" id="ingest-submit-btn" disabled>
+                                Upload &amp; Ingest Video
+                            </button>
+                            <p id="ingest-status" class="ingest-status"></p>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- RTSP Stream Ingestion Modal -->
+        <div id="rtsp-modal" class="modal">
+            <div class="modal-content">
+                <span class="close" data-modal="rtsp-modal">&times;</span>
+                <h2>Ingest RTSP Live Stream</h2>
+                <p class="modal-subtitle">Capture live video from IP cameras and surveillance systems</p>
+
+                <form id="rtsp-form" class="search-form">
+                    <!-- RTSP URL -->
+                    <div class="filter-group">
+                        <label for="rtsp-url">RTSP Stream URL *</label>
+                        <input type="text" id="rtsp-url" placeholder="rtsp://192.168.1.100:554/stream1" required>
+                        <small style="color: #94a3b8; font-size: 0.875rem;">Format: rtsp://username:password@host:port/path</small>
+                    </div>
+
+                    <!-- Zone -->
+                    <div class="filter-group">
+                        <label for="rtsp-zone">Zone/Location</label>
+                        <input type="text" id="rtsp-zone" placeholder="e.g., main_entrance, parking_lot">
+                    </div>
+
+                    <!-- Termination Condition -->
+                    <div class="ingest-row">
+                        <div class="filter-group">
+                            <label for="rtsp-duration">Capture Duration (seconds)</label>
+                            <input type="number" id="rtsp-duration" placeholder="300" min="1" max="3600">
+                            <small style="color: #94a3b8; font-size: 0.875rem;">Leave empty to use max frames instead</small>
+                        </div>
+                        <div class="filter-group">
+                            <label for="rtsp-max-frames">OR Max Frames</label>
+                            <input type="number" id="rtsp-max-frames" placeholder="1000" min="1" max="10000">
+                        </div>
+                    </div>
+
+                    <!-- Semantic Clips (always enabled for RTSP) -->
+                    <div class="ingest-row">
+                        <div class="filter-group">
+                            <label for="rtsp-clip-duration">Clip Duration (seconds)</label>
+                            <input type="number" id="rtsp-clip-duration" value="4.0" min="2" max="20" step="0.5">
+                        </div>
+                        <div class="filter-group">
+                            <label for="rtsp-max-frames-per-clip">Max Frames per Clip</label>
+                            <input type="number" id="rtsp-max-frames-per-clip" value="32" min="4" max="128">
+                        </div>
+                    </div>
+
+                    <!-- Optional: Camera Metadata -->
+                    <details class="advanced-options" style="margin-top: 1rem;">
+                        <summary style="cursor: pointer; font-weight: 500; margin-bottom: 0.5rem;">Camera Metadata (Optional)</summary>
+                        <div class="ingest-row">
+                            <div class="filter-group">
+                                <label for="rtsp-camera-id">Camera ID</label>
+                                <input type="text" id="rtsp-camera-id" placeholder="cam_001">
+                            </div>
+                            <div class="filter-group">
+                                <label for="rtsp-site-id">Site ID</label>
+                                <input type="text" id="rtsp-site-id" placeholder="office_building_a">
+                            </div>
+                        </div>
+                    </details>
+
+                    <!-- Submit -->
+                    <button type="submit" class="search-btn" style="margin-top: 1.5rem;">Start Capture</button>
+                    <div id="rtsp-status" class="ingest-status"></div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="loading-overlay" hidden>
+            <div class="spinner"></div>
+            <p>Searching...</p>
+        </div>
+    </div>
+
+    <script src="app.js?v=2"></script>
+</body>
+</html>

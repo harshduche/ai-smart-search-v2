@@ -1,0 +1,62 @@
+
+# Standalone Worker Configuration
+# This runs ONLY the worker - connects to external RabbitMQ and Qdrant
+# Configure external services in .env file
+
+services:
+  # Embedding Worker (standalone)
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: video-rag-worker-standalone
+    volumes:
+      # Application code
+      - ./ingestion:/app/ingestion
+      - ./search:/app/search
+      - ./observability:/app/observability
+      - ./config.py:/app/config.py
+      - ./worker.py:/app/worker.py
+
+      # Data directories
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+
+      # Environment file
+      - ./.env:/app/.env
+
+    # All configuration comes from .env file
+    env_file:
+      - .env
+
+    # Override specific vars if needed
+    environment:
+      - LOG_DIR=/app/logs
+
+    restart: unless-stopped
+
+    # Network mode: host allows connecting to services on host machine
+    # Change to 'bridge' if using external cloud services
+    network_mode: host
+
+    # GPU support (comment out for CPU-only)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    command: ["python3", "worker.py"]
+
+    # Health check - checks if worker process is running
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "worker.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+# No networks defined - uses default bridge or host mode
