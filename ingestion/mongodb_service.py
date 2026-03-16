@@ -26,6 +26,7 @@ class MongoDBService:
 
     _TELEMETRY_COLLECTION = "flight_telemetry"
     _INGESTION_COLLECTION = "ingestion_state"
+    _PROCESSING_REQUEST_COLLECTION = "processing_requests"
 
     def __init__(self, uri: str, database: str):
         if not _PYMONGO_AVAILABLE:
@@ -35,6 +36,7 @@ class MongoDBService:
         self._db = self._client[database]
         self._col = self._db[self._TELEMETRY_COLLECTION]
         self._ingestion_col = self._db[self._INGESTION_COLLECTION]
+        self._processing_request_col = self._db[self._PROCESSING_REQUEST_COLLECTION]
         self._ensure_indexes()
 
     # ------------------------------------------------------------------
@@ -55,6 +57,11 @@ class MongoDBService:
             self._ingestion_col.create_index("organizationId")
             self._ingestion_col.create_index("status")
             logger.debug("MongoDB indexes ensured on %s", self._INGESTION_COLLECTION)
+
+            self._processing_request_col.create_index("mediaIds")
+            self._processing_request_col.create_index("organizationId")
+            self._processing_request_col.create_index("status")
+            logger.debug("MongoDB indexes ensured on %s", self._PROCESSING_REQUEST_COLLECTION)
         except Exception as exc:
             logger.warning("MongoDB index creation failed (non-fatal): %s", exc)
 
@@ -191,11 +198,13 @@ class MongoDBService:
         status: str,
         pipeline_version: str = "v1",
         error: Optional[str] = None,
+        request_id: Optional[str] = None,
     ) -> bool:
         """Update the ``ingestion_state`` document for *media_id*.
 
-        Sets ``status`` and ``updatedAt``; also sets ``lastError`` when
-        *status* is ``"failed"``.  Returns True on success.
+        Sets ``status``, ``updatedAt``, and (when provided) ``requestId``.
+        Also sets ``lastError`` when *status* is ``"failed"``.
+        Returns True on success.
         """
         try:
             doc_id = self._ingestion_doc_id(media_id, pipeline_version)
@@ -207,6 +216,8 @@ class MongoDBService:
                     "updatedAt": now,
                 },
             }
+            if request_id is not None:
+                update["$set"]["requestId"] = request_id
             if status == "failed" and error is not None:
                 update["$set"]["lastError"] = error
             elif status == "completed":
@@ -224,6 +235,107 @@ class MongoDBService:
             return True
         except Exception as exc:
             logger.warning("update_ingestion_status failed: %s", exc)
+            return False
+
+    def increment_processing_request(
+        self,
+        transition: str,
+        processing_request_id: Optional[str] = None,
+        media_id: Optional[str] = None,
+    ) -> bool:
+        """Atomically update counters on a ``processing_requests`` document.
+
+        *transition* must be one of:
+
+        * ``"queued_to_processing"``  – job picked up by a worker
+        * ``"processing_to_done"``    – job completed successfully
+        * ``"processing_to_failed"``  – job failed permanently
+        * ``"queued_to_skipped"``     – job skipped (already processed, etc.)
+
+        The document is located by *processing_request_id* when provided;
+        otherwise by ``{ mediaIds: media_id }`` as a fallback.
+
+        After each terminal transition (done / failed / skipped) the method
+        checks whether ``done + failed + skipped >= totalMedia`` and, if so,
+        sets ``status`` to ``"completed"``.
+
+        Returns True on success, False on any error or if the document was
+        not found.
+        """
+        _TRANSITIONS: Dict[str, Dict[str, int]] = {
+            "queued_to_processing": {"queued": -1, "processing": 1},
+            "processing_to_done":   {"processing": -1, "done": 1},
+            "processing_to_failed": {"processing": -1, "failed": 1},
+            "queued_to_skipped":    {"queued": -1, "skipped": 1},
+        }
+
+        if transition not in _TRANSITIONS:
+            logger.warning("increment_processing_request: unknown transition %r", transition)
+            return False
+
+        if not processing_request_id and not media_id:
+            logger.warning("increment_processing_request: need processing_request_id or media_id")
+            return False
+
+        try:
+            increments = _TRANSITIONS[transition]
+            is_terminal = transition in (
+                "processing_to_done", "processing_to_failed", "queued_to_skipped"
+            )
+
+            query: Dict[str, Any]
+            if processing_request_id:
+                query = {"_id": processing_request_id}
+            else:
+                query = {"mediaIds": media_id}
+
+            # Step 1: atomically apply the counter increment.
+            result = self._processing_request_col.find_one_and_update(
+                query,
+                {
+                    "$inc": increments,
+                    "$set": {"updatedAt": datetime.now(timezone.utc)},
+                },
+                return_document=True,
+            )
+
+            if result is None:
+                logger.warning(
+                    "processing_requests document not found "
+                    "(request_id=%s, media_id=%s)",
+                    processing_request_id, media_id,
+                )
+                return False
+
+            # Step 2 (terminal transitions only): atomically flip status to
+            # "completed" when done + failed + skipped >= totalMedia.
+            # Uses an aggregation-pipeline update so the condition and the
+            # write are evaluated together by the server — no TOCTOU race
+            # between concurrent workers.
+            if is_terminal:
+                self._processing_request_col.update_one(
+                    {
+                        "_id": result["_id"],
+                        "status": {"$ne": "completed"},
+                        "$expr": {
+                            "$and": [
+                                {"$gt": ["$totalMedia", 0]},
+                                {
+                                    "$gte": [
+                                        {"$add": ["$done", "$failed", "$skipped"]},
+                                        "$totalMedia",
+                                    ]
+                                },
+                            ]
+                        },
+                    },
+                    [{"$set": {"status": "completed", "updatedAt": "$$NOW"}}],
+                )
+
+            return True
+
+        except Exception as exc:
+            logger.warning("increment_processing_request failed: %s", exc)
             return False
 
     def find_media_ids_in_area(

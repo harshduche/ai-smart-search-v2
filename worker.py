@@ -215,6 +215,10 @@ class EmbeddingWorker:
             "site_id": site_id,
             "storage_path": storage_path,  # raw S3 key / path (persisted in Qdrant)
             "video_url": storage_path,     # resolved to a presigned URL in process_job
+            # Batch processing request this job belongs to (used to update counters)
+            "processing_request_id": (
+                job_data.get("processingRequestId") or job_data.get("requestId")
+            ),
             # Media metadata (stored on every vector point)
             "media_id": media.get("mediaId"),
             "flight_id": media.get("flightId"),
@@ -237,8 +241,12 @@ class EmbeddingWorker:
         }
 
     def _set_ingestion_status(
-        self, media_id: Optional[str], pipeline_version: str, status: str,
+        self,
+        media_id: Optional[str],
+        pipeline_version: str,
+        status: str,
         error: Optional[str] = None,
+        request_id: Optional[str] = None,
     ) -> None:
         """Best-effort update of the ingestion_state collection."""
         if not media_id or self.mongodb_service is None:
@@ -249,6 +257,7 @@ class EmbeddingWorker:
                 status=status,
                 pipeline_version=pipeline_version,
                 error=error,
+                request_id=request_id,
             )
             logger.info(
                 "%s ingestion_state → %s for media_id=%s",
@@ -258,6 +267,33 @@ class EmbeddingWorker:
             )
         except Exception as exc:
             logger.warning("ingestion_state update failed (non-fatal): %s", exc)
+
+    def _update_processing_request(
+        self,
+        transition: str,
+        processing_request_id: Optional[str],
+        media_id: Optional[str],
+    ) -> None:
+        """Best-effort counter increment on the processing_requests collection."""
+        if self.mongodb_service is None:
+            return
+        if not processing_request_id and not media_id:
+            return
+        try:
+            ok = self.mongodb_service.increment_processing_request(
+                transition=transition,
+                processing_request_id=processing_request_id,
+                media_id=media_id,
+            )
+            logger.info(
+                "%s processing_requests counter update (%s) for request_id=%s media_id=%s",
+                "✓" if ok else "⚠ (not found)",
+                transition,
+                processing_request_id,
+                media_id,
+            )
+        except Exception as exc:
+            logger.warning("processing_requests update failed (non-fatal): %s", exc)
 
     def process_job(self, job_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -279,9 +315,15 @@ class EmbeddingWorker:
         storage_path = parsed["storage_path"]
         media_id = parsed.get("media_id")
         pipeline_version = parsed.get("pipeline_version", "v1")
+        processing_request_id = parsed.get("processing_request_id")
 
-        # Mark ingestion as processing
-        self._set_ingestion_status(media_id, pipeline_version, "processing")
+        # Mark ingestion as processing and move the request counter queued→processing
+        self._set_ingestion_status(
+            media_id, pipeline_version, "processing", request_id=processing_request_id,
+        )
+        self._update_processing_request(
+            "queued_to_processing", processing_request_id, media_id,
+        )
 
         # Normalise bare S3 keys to full s3://bucket/key URIs so the path is
         # self-contained everywhere it is stored (Qdrant metadata, telemetry
@@ -443,8 +485,13 @@ class EmbeddingWorker:
 
                 processing_time = time.time() - start_time
 
-                # Mark ingestion as completed
-                self._set_ingestion_status(media_id, pipeline_version, "completed")
+                # Mark ingestion as completed and advance the request counter processing→done
+                self._set_ingestion_status(
+                    media_id, pipeline_version, "completed", request_id=processing_request_id,
+                )
+                self._update_processing_request(
+                    "processing_to_done", processing_request_id, media_id,
+                )
 
                 result = {
                     "status": "success",
@@ -475,9 +522,13 @@ class EmbeddingWorker:
                 logger.error(f"  - Error: {str(e)}")
                 logger.error(f"  - Processing time: {processing_time:.2f}s")
 
-                # Mark ingestion as failed
+                # Mark ingestion as failed and advance the request counter processing→failed
                 self._set_ingestion_status(
-                    media_id, pipeline_version, "failed", error=str(e),
+                    media_id, pipeline_version, "failed",
+                    error=str(e), request_id=processing_request_id,
+                )
+                self._update_processing_request(
+                    "processing_to_failed", processing_request_id, media_id,
                 )
 
                 if trace:

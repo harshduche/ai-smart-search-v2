@@ -36,6 +36,7 @@ class S3Service:
         presigned_url_expiration: int = 3600,
         signature_version: str = "s3",
         addressing_style: str = "path",
+        use_accelerate_endpoint: bool = False,
     ):
         """
         Initialise the S3 service.
@@ -57,6 +58,10 @@ class S3Service:
                 ``"virtual"`` produces
                 ``https://<bucket>.s3.<region>.amazonaws.com/<key>`` URLs.
                 Defaults to ``"path"``.
+            use_accelerate_endpoint: If ``True``, use S3 Transfer Acceleration
+                endpoints (e.g. ``bucket.s3-accelerate.amazonaws.com``) for
+                faster transfers. Requires the bucket to have acceleration
+                enabled in AWS. Ignored when ``endpoint_url`` is set.
         """
         self.bucket_name = bucket_name
         self.presigned_url_expiration = presigned_url_expiration
@@ -70,9 +75,12 @@ class S3Service:
             aws_secret_access_key=secret_key or None,
             region_name=region,
         )
+        s3_config = {"addressing_style": addressing_style}
+        if use_accelerate_endpoint and endpoint_url is None:
+            s3_config["use_accelerate_endpoint"] = True
         boto_config = BotocoreConfig(
             signature_version=signature_version,
-            s3={"addressing_style": addressing_style},
+            s3=s3_config,
         )
         self._client = session.client(
             "s3",
@@ -160,9 +168,9 @@ class S3Service:
         self,
         storage_path: str,
         local_path: str,
-        max_concurrency: int = 10,
+        max_concurrency: int = 20,
         multipart_threshold_mb: int = 25,
-        multipart_chunksize_mb: int = 25,
+        multipart_chunksize_mb: int = 32,
         callback: Optional[Any] = None,
     ) -> str:
         """Download an S3 object directly to a local file using multipart parallel transfer.
@@ -320,21 +328,25 @@ def get_s3_service() -> Optional[S3Service]:
 
     sig_ver = getattr(_config, "S3_SIGNATURE_VERSION", "s3")
     addr_style = getattr(_config, "S3_ADDRESSING_STYLE", "path")
+    use_accelerate = getattr(_config, "S3_USE_ACCELERATE", False)
+    endpoint_url = getattr(_config, "S3_ENDPOINT_URL", None) or None
     _s3_service = S3Service(
         bucket_name=bucket,
         region=getattr(_config, "AWS_REGION", "us-east-1"),
         access_key=getattr(_config, "AWS_ACCESS_KEY_ID", None) or None,
         secret_key=getattr(_config, "AWS_SECRET_ACCESS_KEY", None) or None,
-        endpoint_url=getattr(_config, "S3_ENDPOINT_URL", None) or None,
+        endpoint_url=endpoint_url,
         presigned_url_expiration=getattr(_config, "S3_PRESIGNED_URL_EXPIRATION", 3600),
         signature_version=sig_ver,
         addressing_style=addr_style,
+        use_accelerate_endpoint=use_accelerate and endpoint_url is None,
     )
     logger.info(
-        "S3Service initialised (bucket=%s, region=%s, sig=%s, addressing=%s)",
+        "S3Service initialised (bucket=%s, region=%s, sig=%s, addressing=%s, accelerate=%s)",
         bucket,
         getattr(_config, "AWS_REGION", "us-east-1"),
         sig_ver,
         addr_style,
+        use_accelerate and endpoint_url is None,
     )
     return _s3_service

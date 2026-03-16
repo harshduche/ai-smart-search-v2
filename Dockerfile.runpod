@@ -1,0 +1,47 @@
+# RunPod Serverless GPU worker for video embedding jobs.
+#
+# Build:
+#   docker build --platform linux/amd64 -f Dockerfile.runpod -t youruser/video-rag-runpod:latest .
+#
+# Push:
+#   docker push youruser/video-rag-runpod:latest
+#
+# Local test (reads test_input.json):
+#   docker run --gpus all --env-file .env youruser/video-rag-runpod:latest
+
+FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04
+
+# System dependencies (ffmpeg for video decoding, git for HF model downloads)
+RUN apt-get update && apt-get install -y \
+    python3.10 \
+    python3-pip \
+    python3.10-venv \
+    ffmpeg \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    git \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install Python deps (cached layer — only rebuilds when requirements change)
+COPY requirements.txt .
+RUN pip3 install --no-cache-dir -r requirements.txt && \
+    pip3 install --no-cache-dir runpod
+
+# Copy application code
+COPY . .
+
+# Create necessary directories
+RUN mkdir -p data/raw data/frames data/thumbnails models/hf_cache logs
+
+ENV PYTHONUNBUFFERED=1
+ENV HF_HOME=/app/models/hf_cache
+ENV TRANSFORMERS_CACHE=/app/models/hf_cache
+
+# RunPod serverless handler — no EXPOSE or HEALTHCHECK needed;
+# RunPod manages the HTTP lifecycle.
+CMD ["python3", "-u", "runpod_worker.py"]

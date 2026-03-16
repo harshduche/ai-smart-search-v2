@@ -1,0 +1,28 @@
+{
+  "input": {
+    "jobId": "test-job-001",
+    "organizationId": "org_test",
+    "siteId": "site_test",
+    "media": {
+      "mediaId": "media_test_001",
+      "flightId": "flight_test_001",
+      "flightType": "mission",
+      "missionId": "mission_test_001",
+      "missionType": "inspection",
+      "fileName": "test_video.mp4",
+      "fileType": "video/mp4",
+      "fileSizeBytes": 52428800,
+      "captureTimestamp": "2026-02-25T10:00:00Z",
+      "latitude": 18.5204,
+      "longitude": 73.8567,
+      "storagePath": "s3://flytbase-media-stag/658295f8dbab9efb302183ab/media/7077ddaf-3bcf-4a45-bfdb-feb7bf9faf5e/DJI_202512241838_013_7077ddaf-3bcf-4a45-bfdb-feb7bf9faf5e/DJI_20251224183958_0003_V.mp4"
+    },
+    "pipelineVersion": "v1",
+    "chunking": {
+      "chunkDurationSec": 4,
+      "maxFramesPerChunk": 32
+    },
+    "priority": "normal",
+    "createdAt": "2026-02-25T10:00:00Z"
+  }
+}

@@ -67,6 +67,7 @@ S3_SIGNATURE_VERSION = os.getenv("S3_SIGNATURE_VERSION", "s3v4")
 # 'path' = https://s3.region.amazonaws.com/bucket/key
 # 'virtual' = https://bucket.s3.region.amazonaws.com/key
 S3_ADDRESSING_STYLE = os.getenv("S3_ADDRESSING_STYLE", "path")
+S3_USE_ACCELERATE = os.getenv("S3_USE_ACCELERATE", "true").lower() == "true"
 
 # MongoDB (for geospatial queries)
 MONGODB_URI      = os.getenv("MONGODB_URI", "")

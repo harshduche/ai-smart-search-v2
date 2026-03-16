@@ -1,0 +1,34 @@
+# Lightweight CPU-only bridge: RabbitMQ → RunPod Serverless
+#
+# No ML deps, no CUDA — just pika + requests.
+# Final image is ~120 MB.
+#
+# Build:
+#   docker build -f Dockerfile.bridge -t youruser/video-rag-bridge:latest .
+#
+# Run:
+#   docker run --env-file .env youruser/video-rag-bridge:latest
+
+FROM python:3.10-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Only the deps the bridge actually needs
+RUN pip install --no-cache-dir \
+    pika>=1.3.0 \
+    requests>=2.31.0 \
+    python-dotenv>=1.0.0 \
+    urllib3>=1.26.0
+
+# Copy only the bridge script (no ML code needed)
+COPY runpod_bridge.py .
+
+RUN mkdir -p logs
+
+ENV PYTHONUNBUFFERED=1
+
+CMD ["python", "-u", "runpod_bridge.py"]

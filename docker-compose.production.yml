@@ -2,17 +2,20 @@
 #
 # Architecture:
 #   model-server  (GPU)  -- single instance, owns embedding + reranker models
-#   worker        (CPU)  -- 1-2 instances, consume RMQ jobs, call model-server
+#   bridge        (CPU)  -- RabbitMQ → RunPod Serverless bridge (replaces local worker)
 #   api           (CPU)  -- 1 instance, serve search HTTP, call model-server
 #
 # Infrastructure (external / cloud):
 #   Qdrant Cloud  -- vector DB     (QDRANT_URL + QDRANT_API_KEY in .env)
 #   CloudAMQP     -- job queue     (RABBITMQ_* in .env)
 #   MongoDB       -- geospatial DB (MONGODB_URI + MONGODB_DATABASE in .env)
+#   RunPod        -- serverless GPU workers (RUNPOD_API_KEY + RUNPOD_ENDPOINT_ID in .env)
 #
 # Usage:
 #   docker compose -f docker-compose.production.yml up -d
-#   docker compose -f docker-compose.production.yml up -d --scale worker=2
+#
+# To use local workers instead of RunPod (e.g. for testing):
+#   comment out the 'bridge' service and uncomment the 'worker' service below
 
 services:
   # ---------------------------------------------------------------
@@ -54,31 +57,65 @@ services:
       start_period: 120s
 
   # ---------------------------------------------------------------
-  # Worker (CPU) -- consume embedding.jobs, call model-server
-  # RAM budget: ~1.5 GB per worker; keep at 1-2 with 16 GB system RAM
+  # RunPod Bridge (CPU) -- dequeues from RabbitMQ, submits to RunPod
+  #
+  # This is a lightweight process (~128 MB RAM). It does NOT load any
+  # ML models. Ingestion GPU work runs on RunPod Serverless workers.
+  #
+  # Required .env vars:
+  #   RUNPOD_API_KEY, RUNPOD_ENDPOINT_ID
+  #   RUNPOD_MAX_CONCURRENT_JOBS (match your RunPod endpoint max_workers)
   # ---------------------------------------------------------------
-  worker:
+  bridge:
     build:
       context: .
-      dockerfile: Dockerfile.cpu
+      dockerfile: Dockerfile.bridge
+    container_name: video-rag-runpod-bridge
     volumes:
       - ./logs:/app/logs
     env_file: .env
     environment:
-      USE_REMOTE_EMBEDDINGS: "true"
-      MODEL_SERVER_URL: http://model-server:8001
-      MODEL_SERVER_TIMEOUT: "300"
-      DEVICE: cpu
-      SAVE_FULL_FRAMES: "false"
-      SAVE_THUMBNAILS: "false"
-    mem_limit: 2g
-    depends_on:
-      model-server:
-        condition: service_healthy
+      RUNPOD_MAX_CONCURRENT_JOBS: "4"
+      RUNPOD_POLL_INTERVAL: "30"
+      RUNPOD_JOB_TIMEOUT: "7200"
+    mem_limit: 256m
     restart: unless-stopped
     networks:
       - video-rag-network
-    command: ["python3", "worker.py"]
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "runpod_bridge.py"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ---------------------------------------------------------------
+  # Local Worker (CPU) -- alternative to bridge, uses local model-server
+  # Uncomment to use local workers instead of RunPod Serverless.
+  # Comment out the 'bridge' service above when using this.
+  # ---------------------------------------------------------------
+  # worker:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.cpu
+  #   volumes:
+  #     - ./logs:/app/logs
+  #   env_file: .env
+  #   environment:
+  #     USE_REMOTE_EMBEDDINGS: "true"
+  #     MODEL_SERVER_URL: http://model-server:8001
+  #     MODEL_SERVER_TIMEOUT: "300"
+  #     DEVICE: cpu
+  #     SAVE_FULL_FRAMES: "false"
+  #     SAVE_THUMBNAILS: "false"
+  #   mem_limit: 2g
+  #   depends_on:
+  #     model-server:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+  #   networks:
+  #     - video-rag-network
+  #   command: ["python3", "worker.py"]
 
   # ---------------------------------------------------------------
   # API Server (CPU) -- serves search requests, calls model-server
